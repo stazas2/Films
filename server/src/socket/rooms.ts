@@ -125,6 +125,19 @@ export function isRoomReady(room: ServerRoom): boolean {
   return room.bufferingUsers.size === 0;
 }
 
+/** Clean up rooms older than TTL */
+export function cleanupExpiredRooms(): number {
+  const now = Date.now();
+  let removed = 0;
+  for (const [code, room] of rooms) {
+    if (now - room.createdAt > ROOM_TTL_MS) {
+      rooms.delete(code);
+      removed++;
+    }
+  }
+  return removed;
+}
+
 /** For testing only */
 export function _clearRooms(): void {
   rooms.clear();

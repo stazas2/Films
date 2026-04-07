@@ -15,6 +15,21 @@ export function useRoom() {
 
     socket.on('connect', () => {
       store.setConnected(true);
+
+      // Auto-rejoin room after reconnect
+      const { code, userName } = useRoomStore.getState();
+      if (code && userName) {
+        socket.emit(
+          'room:join',
+          { code, userName },
+          (res: { code?: string; users?: UserInfo[]; videoUrl?: string | null; error?: string }) => {
+            if (!res.error && res.users) {
+              store.setUsers(res.users);
+              if (res.videoUrl) store.setVideoUrl(res.videoUrl);
+            }
+          },
+        );
+      }
     });
 
     socket.on('disconnect', () => {
@@ -29,11 +44,16 @@ export function useRoom() {
       store.setVideoUrl(data.url);
     });
 
+    socket.on('room:user-left', (data: { userName: string }) => {
+      // Handled via room:users update + chat system message
+    });
+
     return () => {
       socket.off('connect');
       socket.off('disconnect');
       socket.off('room:users');
       socket.off('room:video');
+      socket.off('room:user-left');
     };
   }, []);
 

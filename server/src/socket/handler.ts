@@ -1,19 +1,42 @@
 import type { Server, Socket } from 'socket.io';
 import { createRoom, joinRoom, leaveRoom, getRoomUsers, getRoomBySocket, setBuffering, isRoomReady } from './rooms.js';
 import { setupTimeSync } from '../sync/time-sync.js';
+import { MAX_EVENTS_PER_SEC } from 'shared/constants';
+
+// Simple rate limiter per socket
+function createRateLimiter() {
+  const counts = new Map<string, { count: number; resetAt: number }>();
+
+  return (socketId: string): boolean => {
+    const now = Date.now();
+    let entry = counts.get(socketId);
+
+    if (!entry || now >= entry.resetAt) {
+      entry = { count: 0, resetAt: now + 1000 };
+      counts.set(socketId, entry);
+    }
+
+    entry.count++;
+    return entry.count <= MAX_EVENTS_PER_SEC;
+  };
+}
 
 export function setupSocketHandler(io: Server) {
+  const checkRate = createRateLimiter();
+
   io.on('connection', (socket: Socket) => {
     console.log(`Client connected: ${socket.id}`);
     setupTimeSync(socket);
 
     socket.on('room:create', (data: { userName: string }, callback) => {
+      if (!checkRate(socket.id)) return;
       const room = createRoom(socket.id, data.userName);
       socket.join(room.code);
       callback({ code: room.code, users: getRoomUsers(room) });
     });
 
     socket.on('room:join', (data: { code: string; userName: string }, callback) => {
+      if (!checkRate(socket.id)) return;
       const result = joinRoom(data.code, socket.id, data.userName);
 
       if ('error' in result) {
@@ -25,9 +48,7 @@ export function setupSocketHandler(io: Server) {
       socket.join(room.code);
 
       const users = getRoomUsers(room);
-      // Notify others
       socket.to(room.code).emit('room:users', { users });
-      // System message
       io.to(room.code).emit('chat:message', {
         id: `sys-${Date.now()}`,
         userId: 'system',
@@ -36,29 +57,28 @@ export function setupSocketHandler(io: Server) {
         timestamp: Date.now(),
         isSystem: true,
       });
-      // Send current state to joiner
       callback({ code: room.code, users, videoUrl: room.videoUrl });
     });
 
     socket.on('room:video', (data: { url: string }) => {
+      if (!checkRate(socket.id)) return;
       const room = getRoomBySocket(socket.id);
       if (!room) return;
       room.videoUrl = data.url;
       socket.to(room.code).emit('room:video', { url: data.url });
     });
 
-    // Sync: broadcast play/pause/seek/sync packets to room
     socket.on('sync:packet', (packet: any) => {
+      if (!checkRate(socket.id)) return;
       const room = getRoomBySocket(socket.id);
       if (!room) return;
       socket.to(room.code).emit('sync:packet', packet);
     });
 
-    // When a new user joins, they request state from host
     socket.on('sync:request-state', () => {
+      if (!checkRate(socket.id)) return;
       const room = getRoomBySocket(socket.id);
       if (!room) return;
-      // Ask the host for current state
       const hostSocket = io.sockets.sockets.get(room.hostId);
       if (hostSocket) {
         hostSocket.emit('sync:request-state', {}, (state: any) => {
@@ -67,14 +87,13 @@ export function setupSocketHandler(io: Server) {
       }
     });
 
-    // Chat
     socket.on('chat:message', (data: { text: string }) => {
+      if (!checkRate(socket.id)) return;
       const room = getRoomBySocket(socket.id);
       if (!room) return;
       const user = room.users.get(socket.id);
       if (!user) return;
 
-      // Truncate to max length
       const text = data.text.slice(0, 500);
 
       const message = {
@@ -89,8 +108,8 @@ export function setupSocketHandler(io: Server) {
       io.to(room.code).emit('chat:message', message);
     });
 
-    // Buffering detection
     socket.on('buffer:state', (data: { buffering: boolean }) => {
+      if (!checkRate(socket.id)) return;
       const room = setBuffering(socket.id, data.buffering);
       if (!room) return;
 
@@ -101,13 +120,11 @@ export function setupSocketHandler(io: Server) {
         socket.to(room.code).emit('buffer:waiting', { userId: socket.id, userName });
       } else {
         socket.to(room.code).emit('buffer:ready', { userId: socket.id, userName });
-        // If everyone is ready, notify room
         if (isRoomReady(room)) {
           io.to(room.code).emit('buffer:all-ready');
         }
       }
 
-      // Update user list with statuses
       io.to(room.code).emit('room:users', { users: getRoomUsers(room) });
     });
 
@@ -118,6 +135,15 @@ export function setupSocketHandler(io: Server) {
         if (room.users.size > 0) {
           io.to(room.code).emit('room:users', { users: getRoomUsers(room) });
           io.to(room.code).emit('room:user-left', { userName: removed.name });
+          // System chat message
+          io.to(room.code).emit('chat:message', {
+            id: `sys-${Date.now()}`,
+            userId: 'system',
+            userName: 'Система',
+            text: `${removed.name} отключился`,
+            timestamp: Date.now(),
+            isSystem: true,
+          });
         }
       }
       console.log(`Client disconnected: ${socket.id}`);

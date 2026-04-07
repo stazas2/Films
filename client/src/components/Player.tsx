@@ -76,8 +76,23 @@ export default function Player({ src }: Props) {
 
     const onPlay = () => store.setPlaying(true);
     const onPause = () => store.setPlaying(false);
-    const onTimeUpdate = () => store.setCurrentTime(video.currentTime);
-    const onDurationChange = () => store.setDuration(video.duration || 0);
+    const onTimeUpdate = () => {
+      store.setCurrentTime(video.currentTime);
+      // Also update duration on timeupdate — HLS may not fire durationchange reliably
+      if (video.duration && isFinite(video.duration)) {
+        store.setDuration(video.duration);
+      }
+    };
+    const onDurationChange = () => {
+      if (video.duration && isFinite(video.duration)) {
+        store.setDuration(video.duration);
+      }
+    };
+    const onLoadedMetadata = () => {
+      if (video.duration && isFinite(video.duration)) {
+        store.setDuration(video.duration);
+      }
+    };
     const onVolumeChange = () => {
       store.setVolume(video.volume);
       store.setMuted(video.muted);
@@ -95,6 +110,7 @@ export default function Player({ src }: Props) {
     video.addEventListener('pause', onPause);
     video.addEventListener('timeupdate', onTimeUpdate);
     video.addEventListener('durationchange', onDurationChange);
+    video.addEventListener('loadedmetadata', onLoadedMetadata);
     video.addEventListener('volumechange', onVolumeChange);
     video.addEventListener('waiting', onWaiting);
     video.addEventListener('playing', onPlaying);
@@ -104,6 +120,7 @@ export default function Player({ src }: Props) {
       video.removeEventListener('pause', onPause);
       video.removeEventListener('timeupdate', onTimeUpdate);
       video.removeEventListener('durationchange', onDurationChange);
+      video.removeEventListener('loadedmetadata', onLoadedMetadata);
       video.removeEventListener('volumechange', onVolumeChange);
       video.removeEventListener('waiting', onWaiting);
       video.removeEventListener('playing', onPlaying);
@@ -119,6 +136,48 @@ export default function Player({ src }: Props) {
       container.requestFullscreen();
     }
   }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      // Don't handle if user is typing in an input
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
+      const video = videoRef.current;
+      if (!video) return;
+
+      switch (e.key) {
+        case ' ':
+          e.preventDefault();
+          if (video.paused) video.play();
+          else video.pause();
+          break;
+        case 'ArrowLeft':
+          e.preventDefault();
+          video.currentTime = Math.max(0, video.currentTime - 10);
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          if (isFinite(video.duration))
+            video.currentTime = Math.min(video.duration, video.currentTime + 10);
+          break;
+        case 'f':
+        case 'F':
+          e.preventDefault();
+          toggleFullscreen();
+          break;
+        case 'm':
+        case 'M':
+          e.preventDefault();
+          video.muted = !video.muted;
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [toggleFullscreen]);
 
   if (!src) {
     return (
