@@ -114,4 +114,33 @@ describe('Socket.io integration', () => {
     const leftEvent = await leftPromise;
     expect(leftEvent.userName).toBe('Dasha');
   });
+
+  it('sync:packet broadcasts to room (not sender)', async () => {
+    _clearRooms();
+    clientA = connect();
+    await new Promise<void>((r) => clientA.on('connect', r));
+
+    const { code } = await new Promise<any>((resolve) => {
+      clientA.emit('room:create', { userName: 'Darius' }, resolve);
+    });
+
+    clientB = connect();
+    await new Promise<void>((r) => clientB.on('connect', r));
+    await new Promise<any>((resolve) => {
+      clientB.emit('room:join', { code, userName: 'Dasha' }, resolve);
+    });
+
+    // B listens for sync packet
+    const syncPromise = new Promise<any>((resolve) => {
+      clientB.on('sync:packet', resolve);
+    });
+
+    // A sends sync packet
+    const packet = { type: 'play', time: 42.5, serverTimestamp: Date.now(), userId: 'a' };
+    clientA.emit('sync:packet', packet);
+
+    const received = await syncPromise;
+    expect(received.type).toBe('play');
+    expect(received.time).toBe(42.5);
+  });
 });

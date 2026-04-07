@@ -8,6 +8,7 @@ export interface ServerRoom {
   hostId: string;
   videoUrl: string | null;
   createdAt: number;
+  bufferingUsers: Set<string>;
 }
 
 const rooms = new Map<string, ServerRoom>();
@@ -31,6 +32,7 @@ export function createRoom(socketId: string, userName: string): ServerRoom {
     hostId: socketId,
     videoUrl: null,
     createdAt: Date.now(),
+    bufferingUsers: new Set(),
   };
 
   rooms.set(code, room);
@@ -63,6 +65,7 @@ export function leaveRoom(socketId: string): { room: ServerRoom; removed: UserIn
     if (!user) continue;
 
     room.users.delete(socketId);
+    room.bufferingUsers.delete(socketId);
 
     // Room empty → delete
     if (room.users.size === 0) {
@@ -99,6 +102,27 @@ export function getRoomUsers(room: ServerRoom): UserInfo[] {
 
 export function getRoomsCount(): number {
   return rooms.size;
+}
+
+export function setBuffering(socketId: string, isBuffering: boolean): ServerRoom | undefined {
+  const room = getRoomBySocket(socketId);
+  if (!room) return undefined;
+
+  if (isBuffering) {
+    room.bufferingUsers.add(socketId);
+    const user = room.users.get(socketId);
+    if (user) user.status = 'buffering';
+  } else {
+    room.bufferingUsers.delete(socketId);
+    const user = room.users.get(socketId);
+    if (user) user.status = 'watching';
+  }
+
+  return room;
+}
+
+export function isRoomReady(room: ServerRoom): boolean {
+  return room.bufferingUsers.size === 0;
 }
 
 /** For testing only */

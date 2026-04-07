@@ -1,7 +1,10 @@
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useState } from 'react';
 import Hls from 'hls.js';
 import { usePlayerStore } from '../store/player';
+import { useSync } from '../hooks/useSync';
+import { socket } from '../lib/socket';
 import PlayerControls from './PlayerControls';
+import BufferOverlay from './BufferOverlay';
 
 interface Props {
   src: string | null;
@@ -12,6 +15,9 @@ export default function Player({ src }: Props) {
   const hlsRef = useRef<Hls | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const store = usePlayerStore();
+
+  // Sync playback with room
+  useSync(videoRef);
 
   // Initialize HLS when src changes
   useEffect(() => {
@@ -76,8 +82,14 @@ export default function Player({ src }: Props) {
       store.setVolume(video.volume);
       store.setMuted(video.muted);
     };
-    const onWaiting = () => store.setBuffering(true);
-    const onPlaying = () => store.setBuffering(false);
+    const onWaiting = () => {
+      store.setBuffering(true);
+      socket.emit('buffer:state', { buffering: true });
+    };
+    const onPlaying = () => {
+      store.setBuffering(false);
+      socket.emit('buffer:state', { buffering: false });
+    };
 
     video.addEventListener('play', onPlay);
     video.addEventListener('pause', onPause);
@@ -124,6 +136,7 @@ export default function Player({ src }: Props) {
           className="w-full h-full"
           playsInline
         />
+        <BufferOverlay />
         {store.error && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/80">
             <p className="text-red-400 text-center px-4">{store.error}</p>

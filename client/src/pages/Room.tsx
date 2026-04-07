@@ -2,6 +2,7 @@ import { useRoomStore } from '../store/room';
 import { useRoom } from '../hooks/useRoom';
 import Player from '../components/Player';
 import LinkInput from '../components/LinkInput';
+import Chat from '../components/Chat';
 
 export default function Room() {
   const { code, users, userName, videoUrl, connected, isHost } = useRoomStore();
@@ -37,26 +38,32 @@ export default function Room() {
           {users.map((user) => (
             <div
               key={user.id}
-              className={`px-3 py-1 rounded-full text-sm ${
+              className={`px-3 py-1 rounded-full text-sm flex items-center gap-1.5 ${
                 user.isHost ? 'bg-blue-600' : 'bg-gray-700'
               }`}
             >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  user.status === 'watching' ? 'bg-green-400' :
+                  user.status === 'buffering' ? 'bg-yellow-400' : 'bg-red-400'
+                }`}
+              />
               {user.name} {user.isHost && '(хост)'}
             </div>
           ))}
         </div>
 
         {/* Link input (only host) */}
-        {isHost && (
-          <LinkInput onSubmit={sendVideoUrl} />
-        )}
+        {isHost && <LinkInput onSubmit={sendVideoUrl} />}
 
-        {/* Player */}
-        <Player src={videoUrl} />
-
-        {/* Чат — заглушка */}
-        <div className="bg-gray-900 rounded-lg p-4 border border-gray-800 h-48 flex items-center justify-center">
-          <p className="text-gray-500">Чат будет здесь (Этап 7)</p>
+        {/* Player + Chat layout */}
+        <div className="flex flex-col lg:flex-row gap-4">
+          <div className="flex-1">
+            <Player src={videoUrl} />
+          </div>
+          <div className="lg:w-80">
+            <Chat />
+          </div>
         </div>
       </div>
     </div>
