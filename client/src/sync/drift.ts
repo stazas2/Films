@@ -8,6 +8,7 @@ import {
 } from 'shared/constants';
 import { getServerTime } from './time-sync';
 import { socket } from '../lib/socket';
+import { beginRemoteAction } from './sync-manager';
 import type { SyncPacket } from 'shared/types';
 
 let videoEl: HTMLVideoElement | null = null;
@@ -99,7 +100,8 @@ export function correctDrift(drift: number, targetTime: number) {
     return;
   }
 
-  // Hard seek for large drift
+  // Hard seek for large drift — suppress local seek echo
+  beginRemoteAction();
   videoEl.currentTime = targetTime;
   videoEl.playbackRate = 1.0;
   correcting = false;

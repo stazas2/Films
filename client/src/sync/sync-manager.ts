@@ -3,7 +3,7 @@ import { getServerTime } from './time-sync';
 import type { SyncPacket } from 'shared/types';
 
 let videoEl: HTMLVideoElement | null = null;
-let isRemoteAction = false;
+let remoteActionDepth = 0;
 let enabled = false;
 
 export function attachVideo(el: HTMLVideoElement) {
@@ -29,6 +29,19 @@ export function detachVideo() {
   socket.off('sync:request-state', onStateRequest);
   videoEl = null;
   enabled = false;
+  remoteActionDepth = 0;
+}
+
+/** Begin a remote-originated action — local events will be suppressed during the window. */
+export function beginRemoteAction(windowMs = 300) {
+  remoteActionDepth++;
+  setTimeout(() => {
+    remoteActionDepth = Math.max(0, remoteActionDepth - 1);
+  }, windowMs);
+}
+
+function isRemote(): boolean {
+  return remoteActionDepth > 0;
 }
 
 function sendPacket(type: SyncPacket['type']) {
@@ -43,46 +56,53 @@ function sendPacket(type: SyncPacket['type']) {
 }
 
 function onLocalPlay() {
-  if (isRemoteAction) return;
+  if (isRemote()) return;
   sendPacket('play');
 }
 
 function onLocalPause() {
-  if (isRemoteAction) return;
+  if (isRemote()) return;
   sendPacket('pause');
 }
 
 function onLocalSeek() {
-  if (isRemoteAction) return;
+  if (isRemote()) return;
   sendPacket('seek');
 }
 
 function onRemotePacket(packet: SyncPacket) {
   if (!videoEl) return;
 
-  isRemoteAction = true;
-
   switch (packet.type) {
-    case 'play':
-      videoEl.currentTime = packet.time;
+    case 'play': {
+      beginRemoteAction();
+      // On play, only seek if significantly out of sync (>1s).
+      // Smaller drift will be corrected smoothly by drift correction.
+      if (Math.abs(videoEl.currentTime - packet.time) > 1) {
+        videoEl.currentTime = packet.time;
+      }
       videoEl.play().catch(() => {});
       break;
-    case 'pause':
-      videoEl.currentTime = packet.time;
+    }
+    case 'pause': {
+      beginRemoteAction();
+      // On pause, always align time exactly — drift correction doesn't run while paused.
+      // The 300ms remote-action window suppresses the resulting 'seeked' echo.
+      if (Math.abs(videoEl.currentTime - packet.time) > 0.05) {
+        videoEl.currentTime = packet.time;
+      }
       videoEl.pause();
       break;
-    case 'seek':
+    }
+    case 'seek': {
+      beginRemoteAction();
       videoEl.currentTime = packet.time;
       break;
+    }
     case 'sync':
-      // Handled by drift correction (Stage 5)
+      // Handled by drift correction
       break;
   }
-
-  // Reset flag after a tick to allow browser events to fire
-  setTimeout(() => {
-    isRemoteAction = false;
-  }, 50);
 }
 
 function onStateRequest(_data: unknown, callback: (state: SyncPacket) => void) {
@@ -97,5 +117,5 @@ function onStateRequest(_data: unknown, callback: (state: SyncPacket) => void) {
 
 /** For testing */
 export function _getIsRemoteAction() {
-  return isRemoteAction;
+  return isRemote();
 }
