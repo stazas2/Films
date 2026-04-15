@@ -179,35 +179,32 @@ export default function Player({ src }: Props) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [toggleFullscreen]);
 
-  if (!src) {
-    return (
-      <div className="aspect-video bg-gray-900 rounded-lg flex items-center justify-center border border-gray-800">
-        <p className="text-gray-500">Вставьте ссылку на видео для начала просмотра</p>
-      </div>
-    );
-  }
-
   return (
     <div ref={containerRef} className="rounded-lg overflow-hidden border border-gray-800 bg-black">
-      <div className="relative aspect-video">
+      <div className="relative aspect-video bg-gray-900">
         <video
           ref={videoRef}
           className="w-full h-full"
           playsInline
         />
-        <BufferOverlay />
+        {!src && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <p className="text-gray-500">Вставьте ссылку на видео для начала просмотра</p>
+          </div>
+        )}
+        {src && <BufferOverlay />}
         {store.error && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/80">
             <p className="text-red-400 text-center px-4">{store.error}</p>
           </div>
         )}
-        {store.buffering && !store.error && (
+        {src && store.buffering && !store.error && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/40">
             <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
           </div>
         )}
       </div>
-      <PlayerControls videoRef={videoRef} onToggleFullscreen={toggleFullscreen} />
+      {src && <PlayerControls videoRef={videoRef} onToggleFullscreen={toggleFullscreen} />}
     </div>
   );
 }
