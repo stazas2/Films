@@ -1,0 +1,17 @@
+export declare const DRIFT_DEAD_ZONE = 50;
+export declare const DRIFT_SOFT_LIMIT = 500;
+export declare const DRIFT_RATE_FAST = 1.05;
+export declare const DRIFT_RATE_SLOW = 0.95;
+export declare const DRIFT_RECOVERY_ZONE = 30;
+export declare const SYNC_INTERVAL = 2000;
+export declare const TIME_SYNC_INTERVAL = 60000;
+export declare const TIME_SYNC_SAMPLES = 10;
+export declare const TIME_SYNC_TRIM = 2;
+export declare const MAX_USERS_PER_ROOM = 10;
+export declare const ROOM_CODE_LENGTH = 6;
+export declare const ROOM_TTL_MS: number;
+export declare const MAX_MESSAGE_LENGTH = 500;
+export declare const MAX_EVENTS_PER_SEC = 20;
+export declare const PROXY_RATE_LIMIT = 100;
+export declare const BUFFER_TIMEOUT_MS = 30000;
+export declare const PROTOCOL_VERSION = 1;
