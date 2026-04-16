@@ -284,14 +284,16 @@ export default function Player({ src }: Props) {
 
   const hideControlsNow = isFullscreen && !controlsVisible;
   const containerClass = isFullscreen
-    ? `fixed inset-0 z-50 flex flex-col bg-black ${hideControlsNow ? 'cursor-none' : ''}`
+    ? `fixed inset-0 z-50 bg-black ${hideControlsNow ? 'cursor-none' : ''}`
     : 'rounded-lg overflow-hidden border border-gray-800 bg-black';
   const videoWrapperClass = isFullscreen
-    ? 'relative flex-1 min-h-0 bg-gray-900'
+    ? 'relative w-full h-full bg-black'
     : 'relative aspect-video bg-gray-900';
   const videoClass = isFullscreen ? 'w-full h-full object-contain' : 'w-full h-full';
-  const controlsClass = isFullscreen
-    ? `transition-opacity duration-200 ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`
+  const controlsWrapperClass = isFullscreen
+    ? `absolute bottom-0 left-0 right-0 transition-opacity duration-200 ${
+        controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+      }`
     : '';
 
   return (
@@ -323,11 +325,14 @@ export default function Player({ src }: Props) {
             <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
           </div>
         )}
+        {isFullscreen && src && (
+          <div className={controlsWrapperClass}>
+            <PlayerControls videoRef={videoRef} onToggleFullscreen={toggleFullscreen} />
+          </div>
+        )}
       </div>
-      {src && (
-        <div className={controlsClass}>
-          <PlayerControls videoRef={videoRef} onToggleFullscreen={toggleFullscreen} />
-        </div>
+      {!isFullscreen && src && (
+        <PlayerControls videoRef={videoRef} onToggleFullscreen={toggleFullscreen} />
       )}
     </div>
   );
