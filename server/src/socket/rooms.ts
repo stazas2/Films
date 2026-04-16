@@ -59,7 +59,9 @@ export function joinRoom(
   return { room };
 }
 
-export function leaveRoom(socketId: string): { room: ServerRoom; removed: UserInfo } | null {
+export function leaveRoom(
+  socketId: string,
+): { room: ServerRoom; removed: UserInfo; newHost?: UserInfo } | null {
   for (const [code, room] of rooms) {
     const user = room.users.get(socketId);
     if (!user) continue;
@@ -78,6 +80,7 @@ export function leaveRoom(socketId: string): { room: ServerRoom; removed: UserIn
       const newHost = room.users.values().next().value!;
       newHost.isHost = true;
       room.hostId = newHost.id;
+      return { room, removed: user, newHost };
     }
 
     return { room, removed: user };

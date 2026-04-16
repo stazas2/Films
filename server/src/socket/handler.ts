@@ -138,7 +138,7 @@ export function setupSocketHandler(io: Server) {
     socket.on('disconnect', () => {
       const result = leaveRoom(socket.id);
       if (result) {
-        const { room, removed } = result;
+        const { room, removed, newHost } = result;
         console.log(`[room] leave code=${room.code} user=${removed.name} socket=${socket.id} size=${room.users.size}`);
         if (room.users.size > 0) {
           io.to(room.code).emit('room:users', { users: getRoomUsers(room) });
@@ -152,6 +152,17 @@ export function setupSocketHandler(io: Server) {
             timestamp: Date.now(),
             isSystem: true,
           });
+          if (newHost) {
+            console.log(`[room] host migrated code=${room.code} from=${removed.name} to=${newHost.name}`);
+            io.to(room.code).emit('chat:message', {
+              id: `sys-${Date.now() + 1}`,
+              userId: 'system',
+              userName: 'Система',
+              text: `${newHost.name} теперь хост`,
+              timestamp: Date.now(),
+              isSystem: true,
+            });
+          }
         }
       }
       console.log(`Client disconnected: ${socket.id}`);

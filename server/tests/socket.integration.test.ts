@@ -115,6 +115,35 @@ describe('Socket.io integration', () => {
     expect(leftEvent.userName).toBe('Dasha');
   });
 
+  it('host disconnect migrates host and notifies remaining clients', async () => {
+    _clearRooms();
+    clientA = connect();
+    await new Promise<void>((r) => clientA.on('connect', r));
+
+    const createResult = await new Promise<any>((resolve) => {
+      clientA.emit('room:create', { userName: 'Host' }, resolve);
+    });
+    expect(createResult.users[0].isHost).toBe(true);
+
+    clientB = connect();
+    await new Promise<void>((r) => clientB.on('connect', r));
+    await new Promise<any>((resolve) => {
+      clientB.emit('room:join', { code: createResult.code, userName: 'Guest' }, resolve);
+    });
+
+    // B listens for the users-update that host migration should produce
+    const usersPromise = new Promise<any>((resolve) => {
+      clientB.on('room:users', resolve);
+    });
+
+    clientA.disconnect();
+
+    const usersUpdate = await usersPromise;
+    expect(usersUpdate.users).toHaveLength(1);
+    expect(usersUpdate.users[0].name).toBe('Guest');
+    expect(usersUpdate.users[0].isHost).toBe(true);
+  });
+
   it('sync:packet broadcasts to room (not sender)', async () => {
     _clearRooms();
     clientA = connect();
