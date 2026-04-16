@@ -14,6 +14,7 @@ export function useRoom() {
     }
 
     socket.on('connect', () => {
+      console.log(`[socket] connected id=${socket.id}`);
       store.setConnected(true);
 
       // Auto-rejoin room after reconnect
@@ -32,8 +33,17 @@ export function useRoom() {
       }
     });
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', (reason) => {
+      console.log(`[socket] disconnected reason=${reason}`);
       store.setConnected(false);
+    });
+
+    socket.on('server:restart', () => {
+      console.log('[socket] server restart announced — reconnect expected');
+    });
+
+    socket.io.on('reconnect_attempt', (attempt) => {
+      console.log(`[socket] reconnecting attempt=${attempt}`);
     });
 
     socket.on('room:users', (data: { users: UserInfo[] }) => {
@@ -54,6 +64,8 @@ export function useRoom() {
       socket.off('room:users');
       socket.off('room:video');
       socket.off('room:user-left');
+      socket.off('server:restart');
+      socket.io.off('reconnect_attempt');
     };
   }, []);
 

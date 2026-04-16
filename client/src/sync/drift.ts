@@ -70,6 +70,11 @@ function onSyncPacket(packet: SyncPacket) {
   const targetTime = packet.time + elapsed;
   const drift = videoEl.currentTime - targetTime; // positive = we're ahead
 
+  const sign = drift >= 0 ? '+' : '';
+  console.log(
+    `[sync] drift=${sign}${Math.round(drift * 1000)}ms target=${targetTime.toFixed(2)} current=${videoEl.currentTime.toFixed(2)}`,
+  );
+
   correctDrift(drift, targetTime);
 }
 

@@ -5,19 +5,24 @@ import { MAX_EVENTS_PER_SEC } from 'shared/constants';
 
 // Simple rate limiter per socket
 function createRateLimiter() {
-  const counts = new Map<string, { count: number; resetAt: number }>();
+  const counts = new Map<string, { count: number; resetAt: number; warned: boolean }>();
 
-  return (socketId: string): boolean => {
+  return (socketId: string, event: string): boolean => {
     const now = Date.now();
     let entry = counts.get(socketId);
 
     if (!entry || now >= entry.resetAt) {
-      entry = { count: 0, resetAt: now + 1000 };
+      entry = { count: 0, resetAt: now + 1000, warned: false };
       counts.set(socketId, entry);
     }
 
     entry.count++;
-    return entry.count <= MAX_EVENTS_PER_SEC;
+    const allowed = entry.count <= MAX_EVENTS_PER_SEC;
+    if (!allowed && !entry.warned) {
+      console.warn(`[ratelimit] socket=${socketId} blocked event=${event}`);
+      entry.warned = true;
+    }
+    return allowed;
   };
 }
 
@@ -29,14 +34,15 @@ export function setupSocketHandler(io: Server) {
     setupTimeSync(socket);
 
     socket.on('room:create', (data: { userName: string }, callback) => {
-      if (!checkRate(socket.id)) return;
+      if (!checkRate(socket.id, 'room:create')) return;
       const room = createRoom(socket.id, data.userName);
       socket.join(room.code);
+      console.log(`[room] create code=${room.code} host=${data.userName} socket=${socket.id}`);
       callback({ code: room.code, users: getRoomUsers(room) });
     });
 
     socket.on('room:join', (data: { code: string; userName: string }, callback) => {
-      if (!checkRate(socket.id)) return;
+      if (!checkRate(socket.id, 'room:join')) return;
       const result = joinRoom(data.code, socket.id, data.userName);
 
       if ('error' in result) {
@@ -57,11 +63,12 @@ export function setupSocketHandler(io: Server) {
         timestamp: Date.now(),
         isSystem: true,
       });
+      console.log(`[room] join code=${room.code} user=${data.userName} socket=${socket.id} size=${users.length}`);
       callback({ code: room.code, users, videoUrl: room.videoUrl });
     });
 
     socket.on('room:video', (data: { url: string }) => {
-      if (!checkRate(socket.id)) return;
+      if (!checkRate(socket.id, 'room:video')) return;
       const room = getRoomBySocket(socket.id);
       if (!room) return;
       room.videoUrl = data.url;
@@ -69,14 +76,14 @@ export function setupSocketHandler(io: Server) {
     });
 
     socket.on('sync:packet', (packet: any) => {
-      if (!checkRate(socket.id)) return;
+      if (!checkRate(socket.id, 'sync:packet')) return;
       const room = getRoomBySocket(socket.id);
       if (!room) return;
       socket.to(room.code).emit('sync:packet', packet);
     });
 
     socket.on('sync:request-state', () => {
-      if (!checkRate(socket.id)) return;
+      if (!checkRate(socket.id, 'sync:request-state')) return;
       const room = getRoomBySocket(socket.id);
       if (!room) return;
       const hostSocket = io.sockets.sockets.get(room.hostId);
@@ -88,7 +95,7 @@ export function setupSocketHandler(io: Server) {
     });
 
     socket.on('chat:message', (data: { text: string }) => {
-      if (!checkRate(socket.id)) return;
+      if (!checkRate(socket.id, 'chat:message')) return;
       const room = getRoomBySocket(socket.id);
       if (!room) return;
       const user = room.users.get(socket.id);
@@ -109,7 +116,7 @@ export function setupSocketHandler(io: Server) {
     });
 
     socket.on('buffer:state', (data: { buffering: boolean }) => {
-      if (!checkRate(socket.id)) return;
+      if (!checkRate(socket.id, 'buffer:state')) return;
       const room = setBuffering(socket.id, data.buffering);
       if (!room) return;
 
@@ -132,6 +139,7 @@ export function setupSocketHandler(io: Server) {
       const result = leaveRoom(socket.id);
       if (result) {
         const { room, removed } = result;
+        console.log(`[room] leave code=${room.code} user=${removed.name} socket=${socket.id} size=${room.users.size}`);
         if (room.users.size > 0) {
           io.to(room.code).emit('room:users', { users: getRoomUsers(room) });
           io.to(room.code).emit('room:user-left', { userName: removed.name });

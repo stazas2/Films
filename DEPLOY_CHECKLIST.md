@@ -1,5 +1,22 @@
 # Чеклист перед реальным тестом (Молдова ↔ РФ)
 
+## 0. Порядок работ (приоритет)
+
+**До теста с подругой:**
+
+1. **Логи `[sync]/[buffer]/[socket]`** (раздел 3) — без них тест бесполезен, не узнаешь причину дрейфа.
+2. **Cron-пинг `/health` раз в 10 мин** (раздел 4) — чтобы Free tier не засыпал и подруга не ждала 30с холодный старт.
+3. **Graceful shutdown** (раздел 4) — broadcast `server:restart` перед закрытием сокетов, иначе при рестарте Render клиенты молча отваливаются.
+4. **Debounce `buffer:state` 500ms** (раздел 1) — чтобы флип `waiting/playing` на дёрганом мобильном не съел rate limit.
+
+**— ТЕСТ —**
+
+5–7. **Тюнинг порогов** (раздел 1: `MAX_EVENTS_PER_SEC`, sync thresholds, NTP 20 замеров) — только по цифрам из реальных логов, до теста это гадание.
+
+**Backlog (не блокеры):**
+
+8+. Раздел 6 — host migration, persist комнат, touch-жесты, адаптивное качество HLS.
+
 ## 1. Параметры, которые стоит подкрутить
 
 ### Сервер — `shared/constants.ts`
@@ -57,18 +74,35 @@
 
 ## 4. Deploy-готовность
 
-- [ ] `.env.production` для клиента: `VITE_SERVER_URL=https://your-domain.com`
-- [ ] CORS на сервере: whitelist production-origin
-- [ ] HTTPS обязательно — WebSocket через `wss://` (иначе блокируется mixed content)
-- [ ] Graceful shutdown: `SIGTERM` → broadcast `server:restart` → close sockets
-- [ ] `pm2` или `systemd` с auto-restart
-- [ ] Минимальный VPS: 1 CPU / 1GB RAM / 100Mbps хватит на 10-20 одновременных зрителей
+**Выбранная архитектура:** один Render Web Service (Free) — Fastify отдаёт и WS, и собранный `client/dist`. Клиент и сервер на одном origin.
+
+### Сделано
+- [x] `.env.production` для клиента: `VITE_SERVER_URL=` (пусто → same-origin)
+- [x] CORS: `CLIENT_ORIGIN` env, в prod дефолт `true` (same-origin всё равно)
+- [x] HTTPS/WSS — Render даёт автоматически
+- [x] Auto-restart — встроено в Render
+- [x] Статика SPA: `@fastify/static` + `setNotFoundHandler` → `index.html` для любого GET кроме `/api/*` и `/socket.io/*`
+- [x] Сборка сервера через `tsup` (инлайнит workspace `shared`, один `dist/index.mjs`)
+- [x] `render.yaml` blueprint — `buildCommand: npm install --include=dev && npm run build` (без `--include=dev` vite/tailwind не ставятся при `NODE_ENV=production`)
+- [x] Node 20 зафиксирован в `engines` + `.node-version`
+
+### Осталось
+- [ ] Graceful shutdown: `SIGTERM` → broadcast `server:restart` → `io.close()` → `app.close()`
+  Причина: Render перезапускает инстанс при деплое/засыпании. Сейчас комнаты просто пропадают без уведомления клиента.
+- [ ] Разбудить сервис перед просмотром: Free tier засыпает после 15 мин без трафика, холодный старт ~30с. Либо cron-пинг `/health` раз в 10 мин (например, cron-job.org), либо просто открыть ссылку за минуту до.
+- [ ] Лимиты Free tier: 512MB RAM / 0.1 CPU / ~100GB трафика в месяц. Фильм 1.5ч ≈ 2GB × 2 юзера = 4GB. Хватит на ~25 просмотров.
+- [ ] Мониторинг трафика в Render dashboard — если упрёмся, выносить HLS-прокси отдельно.
+
+### Known gotchas от реального деплоя
+- `tsc` через rootDir не собирает workspace `shared` — пришлось перейти на `tsup` с `noExternal: ['shared']`
+- `import.meta.env` в клиенте требует `"types": ["vite/client"]` в tsconfig
+- Render по умолчанию скипает devDependencies → нужен `--include=dev` в buildCommand
 
 ## 5. Сценарий тестирования с подругой
 
 **Цель: 30 минут непрерывного просмотра без ручного вмешательства.**
 
-1. [ ] Задеплоить на VPS (DigitalOcean/Hetzner — от $5/мес)
+1. [x] ~~Задеплоить на VPS (DigitalOcean/Hetzner — от $5/мес)~~ → Render Free tier
 2. [ ] Открыть две вкладки с разных сетей (твой 4G + её WiFi)
 3. [ ] Включить фильм, оставить на 5 минут — замерить drift (должен быть <100ms)
 4. [ ] Перемотать 10 раз подряд — проверить, что не залипает

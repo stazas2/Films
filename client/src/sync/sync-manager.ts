@@ -57,16 +57,19 @@ function sendPacket(type: SyncPacket['type']) {
 
 function onLocalPlay() {
   if (isRemote()) return;
+  console.log(`[sync] local play at ${videoEl?.currentTime.toFixed(2)}`);
   sendPacket('play');
 }
 
 function onLocalPause() {
   if (isRemote()) return;
+  console.log(`[sync] local pause at ${videoEl?.currentTime.toFixed(2)}`);
   sendPacket('pause');
 }
 
 function onLocalSeek() {
   if (isRemote()) return;
+  console.log(`[sync] local seek to ${videoEl?.currentTime.toFixed(2)}`);
   sendPacket('seek');
 }
 
@@ -76,6 +79,7 @@ function onRemotePacket(packet: SyncPacket) {
   switch (packet.type) {
     case 'play': {
       beginRemoteAction();
+      console.log(`[sync] remote play at ${packet.time.toFixed(2)}`);
       // On play, only seek if significantly out of sync (>1s).
       // Smaller drift will be corrected smoothly by drift correction.
       if (Math.abs(videoEl.currentTime - packet.time) > 1) {
@@ -86,6 +90,7 @@ function onRemotePacket(packet: SyncPacket) {
     }
     case 'pause': {
       beginRemoteAction();
+      console.log(`[sync] remote pause at ${packet.time.toFixed(2)}`);
       // On pause, always align time exactly — drift correction doesn't run while paused.
       // The 300ms remote-action window suppresses the resulting 'seeked' echo.
       if (Math.abs(videoEl.currentTime - packet.time) > 0.05) {
@@ -96,6 +101,7 @@ function onRemotePacket(packet: SyncPacket) {
     }
     case 'seek': {
       beginRemoteAction();
+      console.log(`[sync] remote seek to ${packet.time.toFixed(2)}`);
       videoEl.currentTime = packet.time;
       break;
     }

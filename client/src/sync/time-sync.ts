@@ -39,6 +39,9 @@ export async function performSync(): Promise<number> {
   offset = trimmed.reduce((sum, s) => sum + s.offset, 0) / trimmed.length;
   synced = true;
 
+  const avgRtt = trimmed.reduce((sum, s) => sum + s.rtt, 0) / trimmed.length;
+  console.log(`[sync] offset=${Math.round(offset)}ms rtt=${Math.round(avgRtt)}ms`);
+
   return offset;
 }
 

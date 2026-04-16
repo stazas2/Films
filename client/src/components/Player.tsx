@@ -74,6 +74,26 @@ export default function Player({ src }: Props) {
     const video = videoRef.current;
     if (!video) return;
 
+    // Debounce buffer:state emits so a flapping waiting/playing cycle on a shaky
+    // connection doesn't hammer the rate limiter. UI updates stay immediate.
+    let pendingBufferState: boolean | null = null;
+    let lastSentBufferState: boolean | null = null;
+    let bufferTimer: ReturnType<typeof setTimeout> | null = null;
+    const flushBufferState = () => {
+      bufferTimer = null;
+      if (pendingBufferState === null) return;
+      if (pendingBufferState !== lastSentBufferState) {
+        socket.emit('buffer:state', { buffering: pendingBufferState });
+        lastSentBufferState = pendingBufferState;
+      }
+      pendingBufferState = null;
+    };
+    const scheduleBufferEmit = (buffering: boolean) => {
+      pendingBufferState = buffering;
+      if (bufferTimer) return;
+      bufferTimer = setTimeout(flushBufferState, 500);
+    };
+
     const onPlay = () => store.setPlaying(true);
     const onPause = () => store.setPlaying(false);
     const onTimeUpdate = () => {
@@ -98,12 +118,14 @@ export default function Player({ src }: Props) {
       store.setMuted(video.muted);
     };
     const onWaiting = () => {
+      console.log('[buffer] waiting');
       store.setBuffering(true);
-      socket.emit('buffer:state', { buffering: true });
+      scheduleBufferEmit(true);
     };
     const onPlaying = () => {
+      console.log('[buffer] playing');
       store.setBuffering(false);
-      socket.emit('buffer:state', { buffering: false });
+      scheduleBufferEmit(false);
     };
 
     video.addEventListener('play', onPlay);
@@ -124,6 +146,7 @@ export default function Player({ src }: Props) {
       video.removeEventListener('volumechange', onVolumeChange);
       video.removeEventListener('waiting', onWaiting);
       video.removeEventListener('playing', onPlaying);
+      if (bufferTimer) clearTimeout(bufferTimer);
     };
   }, []);
 
