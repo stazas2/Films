@@ -78,7 +78,7 @@ export async function hlsProxyRoute(app: FastifyInstance) {
 
         if (!response.ok) {
           const body = await response.text().catch(() => '');
-          request.log.error(`Proxy ${response.status} for ${url} (final: ${finalUrl}): ${body.slice(0, 200)}`);
+          console.warn(`[proxy] ${response.status} for ${url} (final: ${finalUrl}): ${body.slice(0, 200)}`);
           return reply.status(response.status).send({ error: `Upstream error: ${response.status}` });
         }
 
@@ -123,7 +123,7 @@ export async function hlsProxyRoute(app: FastifyInstance) {
         reply.header('Access-Control-Allow-Origin', '*');
         return reply.send(buffer);
       } catch (err: any) {
-        request.log.error(`Proxy error: ${err.message}`);
+        console.warn(`[proxy] network error for ${url}: ${err.message}`);
         return reply.status(502).send({ error: `Proxy error: ${err.message}` });
       }
     },

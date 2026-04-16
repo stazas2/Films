@@ -1,4 +1,12 @@
 import { useRef, useEffect, useCallback, useState } from 'react';
+// iOS Safari uses webkit-prefixed fullscreen APIs on older versions.
+interface FullscreenDoc extends Document {
+  webkitFullscreenElement?: Element;
+  webkitExitFullscreen?: () => Promise<void>;
+}
+interface FullscreenEl extends HTMLElement {
+  webkitRequestFullscreen?: () => Promise<void>;
+}
 import Hls from 'hls.js';
 import { usePlayerStore } from '../store/player';
 import { useSync } from '../hooks/useSync';
@@ -15,6 +23,9 @@ export default function Player({ src }: Props) {
   const hlsRef = useRef<Hls | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const store = usePlayerStore();
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Sync playback with room
   useSync(videoRef);
@@ -151,14 +162,83 @@ export default function Player({ src }: Props) {
   }, []);
 
   const toggleFullscreen = useCallback(() => {
-    const container = containerRef.current;
+    const container = containerRef.current as FullscreenEl | null;
     if (!container) return;
-    if (document.fullscreenElement) {
-      document.exitFullscreen();
-    } else {
-      container.requestFullscreen();
+    const doc = document as FullscreenDoc;
+    const nativeActive = doc.fullscreenElement || doc.webkitFullscreenElement;
+    if (nativeActive) {
+      (doc.exitFullscreen || doc.webkitExitFullscreen)?.call(doc);
+      return;
     }
+    // No native fullscreen active — but we might be in CSS pseudo-fullscreen (iOS fallback).
+    setIsFullscreen((prev) => {
+      if (prev) return false; // exit pseudo-fullscreen
+      const req =
+        container.requestFullscreen?.bind(container) ||
+        container.webkitRequestFullscreen?.bind(container);
+      if (req) {
+        req().catch(() => {
+          // Browser denied native fullscreen — fall back to CSS pseudo-fullscreen.
+          setIsFullscreen(true);
+        });
+        return prev; // fullscreenchange event will flip the state on success
+      }
+      // iOS Safari < 16.4: no element fullscreen API → use CSS pseudo-fullscreen.
+      return true;
+    });
   }, []);
+
+  // Sync isFullscreen state with browser fullscreen changes (including ESC / swipe exit).
+  useEffect(() => {
+    const onChange = () => {
+      const doc = document as FullscreenDoc;
+      const active = !!(doc.fullscreenElement || doc.webkitFullscreenElement);
+      setIsFullscreen(active);
+    };
+    document.addEventListener('fullscreenchange', onChange);
+    document.addEventListener('webkitfullscreenchange', onChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onChange);
+      document.removeEventListener('webkitfullscreenchange', onChange);
+    };
+  }, []);
+
+  // Auto-hide controls after inactivity in fullscreen. Show on any pointer activity.
+  const scheduleHideControls = useCallback(() => {
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    if (!isFullscreen) return;
+    const video = videoRef.current;
+    if (!video || video.paused) return;
+    hideTimerRef.current = setTimeout(() => setControlsVisible(false), 3000);
+  }, [isFullscreen]);
+
+  const showControls = useCallback(() => {
+    setControlsVisible(true);
+    scheduleHideControls();
+  }, [scheduleHideControls]);
+
+  useEffect(() => {
+    if (!isFullscreen) {
+      setControlsVisible(true);
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+      return;
+    }
+    showControls();
+    const video = videoRef.current;
+    if (!video) return;
+    const onPause = () => {
+      setControlsVisible(true);
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    };
+    const onPlay = () => scheduleHideControls();
+    video.addEventListener('pause', onPause);
+    video.addEventListener('play', onPlay);
+    return () => {
+      video.removeEventListener('pause', onPause);
+      video.removeEventListener('play', onPlay);
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    };
+  }, [isFullscreen, showControls, scheduleHideControls]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -202,12 +282,29 @@ export default function Player({ src }: Props) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [toggleFullscreen]);
 
+  const hideControlsNow = isFullscreen && !controlsVisible;
+  const containerClass = isFullscreen
+    ? `fixed inset-0 z-50 flex flex-col bg-black ${hideControlsNow ? 'cursor-none' : ''}`
+    : 'rounded-lg overflow-hidden border border-gray-800 bg-black';
+  const videoWrapperClass = isFullscreen
+    ? 'relative flex-1 min-h-0 bg-gray-900'
+    : 'relative aspect-video bg-gray-900';
+  const videoClass = isFullscreen ? 'w-full h-full object-contain' : 'w-full h-full';
+  const controlsClass = isFullscreen
+    ? `transition-opacity duration-200 ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`
+    : '';
+
   return (
-    <div ref={containerRef} className="rounded-lg overflow-hidden border border-gray-800 bg-black">
-      <div className="relative aspect-video bg-gray-900">
+    <div
+      ref={containerRef}
+      className={containerClass}
+      onMouseMove={isFullscreen ? showControls : undefined}
+      onTouchStart={isFullscreen ? showControls : undefined}
+    >
+      <div className={videoWrapperClass}>
         <video
           ref={videoRef}
-          className="w-full h-full"
+          className={videoClass}
           playsInline
         />
         {!src && (
@@ -227,7 +324,11 @@ export default function Player({ src }: Props) {
           </div>
         )}
       </div>
-      {src && <PlayerControls videoRef={videoRef} onToggleFullscreen={toggleFullscreen} />}
+      {src && (
+        <div className={controlsClass}>
+          <PlayerControls videoRef={videoRef} onToggleFullscreen={toggleFullscreen} />
+        </div>
+      )}
     </div>
   );
 }
