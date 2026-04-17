@@ -4,10 +4,10 @@
 
 **До теста с подругой:**
 
-1. **Логи `[sync]/[buffer]/[socket]`** (раздел 3) — без них тест бесполезен, не узнаешь причину дрейфа.
-2. **Cron-пинг `/health` раз в 10 мин** (раздел 4) — чтобы Free tier не засыпал и подруга не ждала 30с холодный старт.
-3. **Graceful shutdown** (раздел 4) — broadcast `server:restart` перед закрытием сокетов, иначе при рестарте Render клиенты молча отваливаются.
-4. **Debounce `buffer:state` 500ms** (раздел 1) — чтобы флип `waiting/playing` на дёрганом мобильном не съел rate limit.
+1. [x] **Логи `[sync]/[buffer]/[socket]`** (раздел 3) — без них тест бесполезен, не узнаешь причину дрейфа.
+2. [ ] **Cron-пинг `/health` раз в 10 мин** (раздел 4) — чтобы Free tier не засыпал и подруга не ждала 30с холодный старт. *(внешняя настройка: cron-job.org)*
+3. [x] **Graceful shutdown** (раздел 4) — broadcast `server:restart` перед закрытием сокетов, иначе при рестарте Render клиенты молча отваливаются.
+4. [x] **Debounce `buffer:state` 500ms** (раздел 1) — чтобы флип `waiting/playing` на дёрганом мобильном не съел rate limit.
 
 **— ТЕСТ —**
 
@@ -39,7 +39,7 @@
 
 ### Buffering — `client/src/components/Player.tsx`
 
-- [ ] Debounce для `buffer:state`: отправлять не чаще 1 раза в 500ms
+- [x] Debounce для `buffer:state`: отправлять не чаще 1 раза в 500ms
   Причина: на дёрганом соединении `waiting`/`playing` могут чередоваться по 5 раз в секунду.
 
 ### NTP — `client/src/sync/time-sync.ts`
@@ -59,18 +59,18 @@
 
 ### На клиенте (console.log с префиксом `[sync]`)
 
-- [ ] Offset от NTP каждые 60с: `[sync] offset=123ms rtt=150ms`
-- [ ] Drift при каждом sync-пакете: `[sync] drift=+250ms target=1234.56 current=1234.81`
-- [ ] Каждое remote action: `[sync] remote play at 1234.56`
-- [ ] Каждое local action: `[sync] local pause at 1234.78`
-- [ ] Buffering events: `[buffer] waiting/playing`
-- [ ] Reconnect: `[socket] disconnected → reconnecting (attempt N)`
+- [x] Offset от NTP каждые 60с: `[sync] offset=123ms rtt=150ms`
+- [x] Drift при каждом sync-пакете: `[sync] drift=+250ms target=1234.56 current=1234.81`
+- [x] Каждое remote action: `[sync] remote play at 1234.56`
+- [x] Каждое local action: `[sync] local pause at 1234.78`
+- [x] Buffering events: `[buffer] waiting/playing`
+- [x] Reconnect: `[socket] disconnected → reconnecting (attempt N)`
 
 ### На сервере
 
-- [ ] Rate limit hits: `[ratelimit] socket=xxx blocked event=xxx`
-- [ ] Proxy 4xx/5xx: `[proxy] 401 for https://...`
-- [ ] Комнаты: create/join/leave с таймстампом
+- [x] Rate limit hits: `[ratelimit] socket=xxx blocked event=xxx`
+- [x] Proxy 4xx/5xx: `[proxy] 401 for https://...`
+- [x] Комнаты: create/join/leave/host migrated с таймстампом
 
 ## 4. Deploy-готовность
 
@@ -87,8 +87,8 @@
 - [x] Node 20 зафиксирован в `engines` + `.node-version`
 
 ### Осталось
-- [ ] Graceful shutdown: `SIGTERM` → broadcast `server:restart` → `io.close()` → `app.close()`
-  Причина: Render перезапускает инстанс при деплое/засыпании. Сейчас комнаты просто пропадают без уведомления клиента.
+- [x] Graceful shutdown: `SIGTERM`/`SIGINT` → broadcast `server:restart` → 500ms → `io.close()` → `app.close()`.
+  Локально на Windows не тестится (нет POSIX-сигналов), на Render проверится при первом рестарте.
 - [ ] Разбудить сервис перед просмотром: Free tier засыпает после 15 мин без трафика, холодный старт ~30с. Либо cron-пинг `/health` раз в 10 мин (например, cron-job.org), либо просто открыть ссылку за минуту до.
 - [ ] Лимиты Free tier: 512MB RAM / 0.1 CPU / ~100GB трафика в месяц. Фильм 1.5ч ≈ 2GB × 2 юзера = 4GB. Хватит на ~25 просмотров.
 - [ ] Мониторинг трафика в Render dashboard — если упрёмся, выносить HLS-прокси отдельно.
@@ -113,7 +113,7 @@
 
 ## 6. Известные риски, которые не закрыты
 
-- **Host migration не реализован** — если хост (тот, кто создал комнату) уходит, комната не переназначает хоста. Второй юзер остаётся, но периодический sync от хоста не приходит → drift correction не работает.
+- ~~**Host migration не реализован**~~ — реализовано: при `disconnect` хоста сервер переназначает `hostId` первому оставшемуся, broadcast `room:users` обновляет флаг у клиента, `useSync` реагирует через useEffect-deps и запускает `startHostSync` на новом хосте. Видно по логу `[room] host migrated` и системному сообщению в чате. Гэп без sync-пакетов — до `SYNC_INTERVAL` (2с).
 - **Нет сохранения состояния комнаты** — если сервер перезапустится, все комнаты очистятся.
 - **Нет адаптивного качества HLS** — HLS.js выбирает дорожку автоматически, но между клиентами могут быть разные качества → разный размер сегментов → разная буферизация.
 - **Нет `touch`-жестов** на мобильных — перемотка свайпом не работает.
