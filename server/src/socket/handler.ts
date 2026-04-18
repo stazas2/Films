@@ -79,7 +79,9 @@ export function setupSocketHandler(io: Server) {
       if (!checkRate(socket.id, 'sync:packet')) return;
       const room = getRoomBySocket(socket.id);
       if (!room) return;
-      socket.to(room.code).emit('sync:packet', packet);
+      const user = room.users.get(socket.id);
+      const enriched = { ...packet, userName: user?.name };
+      socket.to(room.code).emit('sync:packet', enriched);
     });
 
     socket.on('sync:request-state', () => {

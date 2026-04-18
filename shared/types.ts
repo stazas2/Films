@@ -8,6 +8,7 @@ export interface SyncPacket {
   time: number;           // video.currentTime
   serverTimestamp: number; // TimeSync.getServerTime()
   userId: string;
+  userName?: string;       // injected by server on broadcast
 }
 
 export interface BufferPacket {

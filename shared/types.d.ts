@@ -5,6 +5,7 @@ export interface SyncPacket {
     time: number;
     serverTimestamp: number;
     userId: string;
+    userName?: string;
 }
 export interface BufferPacket {
     type: BufferState;
