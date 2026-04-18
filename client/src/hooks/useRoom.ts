@@ -9,29 +9,42 @@ export function useRoom() {
   const store = useRoomStore();
 
   useEffect(() => {
-    if (!socket.connected) {
-      socket.connect();
-    }
+    const tryRejoin = () => {
+      const { code, userName } = useRoomStore.getState();
+      if (!code || !userName) return;
+      socket.emit(
+        'room:join',
+        { code, userName },
+        (res: { code?: string; users?: UserInfo[]; videoUrl?: string | null; error?: string }) => {
+          if (res.error) {
+            const msg = res.error || 'Комната больше не доступна';
+            useRoomStore.getState().setRejoinError(msg);
+            useRoomStore.getState().reset();
+            navigate('/');
+            return;
+          }
+          if (res.users) {
+            useRoomStore.getState().setUsers(res.users);
+            useRoomStore.getState().setVideoUrl(res.videoUrl ?? null);
+          }
+        },
+      );
+    };
 
-    socket.on('connect', () => {
+    const onConnect = () => {
       console.log(`[socket] connected id=${socket.id}`);
       store.setConnected(true);
+      tryRejoin();
+    };
 
-      // Auto-rejoin room after reconnect
-      const { code, userName } = useRoomStore.getState();
-      if (code && userName) {
-        socket.emit(
-          'room:join',
-          { code, userName },
-          (res: { code?: string; users?: UserInfo[]; videoUrl?: string | null; error?: string }) => {
-            if (!res.error && res.users) {
-              store.setUsers(res.users);
-              if (res.videoUrl) store.setVideoUrl(res.videoUrl);
-            }
-          },
-        );
-      }
-    });
+    socket.on('connect', onConnect);
+
+    if (socket.connected) {
+      // Already connected (HMR / remount) — fire handler manually
+      onConnect();
+    } else {
+      socket.connect();
+    }
 
     socket.on('disconnect', (reason) => {
       console.log(`[socket] disconnected reason=${reason}`);
@@ -59,7 +72,7 @@ export function useRoom() {
     });
 
     return () => {
-      socket.off('connect');
+      socket.off('connect', onConnect);
       socket.off('disconnect');
       socket.off('room:users');
       socket.off('room:video');
@@ -76,7 +89,7 @@ export function useRoom() {
         'room:create',
         { userName },
         (res: { code: string; users: UserInfo[] }) => {
-          store.setRoom(res.code, res.users);
+          store.setRoom(res.code, res.users, true);
           navigate(`/room/${res.code}`);
         },
       );
