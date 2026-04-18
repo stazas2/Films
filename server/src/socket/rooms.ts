@@ -1,4 +1,4 @@
-import { MAX_USERS_PER_ROOM, ROOM_TTL_MS } from 'shared/constants';
+import { MAX_USERS_PER_ROOM, ROOM_TTL_MS, EMPTY_ROOM_GRACE_MS } from 'shared/constants';
 import type { UserInfo } from 'shared/types';
 import { generateRoomCode } from '../utils/room-code.js';
 
@@ -6,9 +6,12 @@ export interface ServerRoom {
   code: string;
   users: Map<string, UserInfo>;
   hostId: string;
+  creatorName: string;
   videoUrl: string | null;
   createdAt: number;
   bufferingUsers: Set<string>;
+  /** Timer that deletes the room after grace period when it becomes empty. Cleared on next join. */
+  emptyDeleteTimer: ReturnType<typeof setTimeout> | null;
 }
 
 const rooms = new Map<string, ServerRoom>();
@@ -30,9 +33,11 @@ export function createRoom(socketId: string, userName: string): ServerRoom {
     code,
     users: new Map([[socketId, user]]),
     hostId: socketId,
+    creatorName: userName,
     videoUrl: null,
     createdAt: Date.now(),
     bufferingUsers: new Set(),
+    emptyDeleteTimer: null,
   };
 
   rooms.set(code, room);
@@ -48,12 +53,30 @@ export function joinRoom(
   if (!room) return { error: 'Комната не найдена' };
   if (room.users.size >= MAX_USERS_PER_ROOM) return { error: 'Комната заполнена' };
 
+  // Someone rejoined — cancel pending delete if any
+  if (room.emptyDeleteTimer) {
+    clearTimeout(room.emptyDeleteTimer);
+    room.emptyDeleteTimer = null;
+  }
+
+  // Creator reclaims host on rejoin (by name match)
+  const isCreator = userName === room.creatorName;
+
   const user: UserInfo = {
     id: socketId,
     name: userName,
-    isHost: false,
+    isHost: isCreator,
     status: 'watching',
   };
+
+  if (isCreator) {
+    // Demote whoever was acting as host
+    const prevHost = room.users.get(room.hostId);
+    if (prevHost && prevHost.id !== socketId) {
+      prevHost.isHost = false;
+    }
+    room.hostId = socketId;
+  }
 
   room.users.set(socketId, user);
   return { room };
@@ -69,13 +92,17 @@ export function leaveRoom(
     room.users.delete(socketId);
     room.bufferingUsers.delete(socketId);
 
-    // Room empty → delete
+    // Room empty → schedule delete after grace period so a solo host can refresh
     if (room.users.size === 0) {
-      rooms.delete(code);
+      if (room.emptyDeleteTimer) clearTimeout(room.emptyDeleteTimer);
+      room.emptyDeleteTimer = setTimeout(() => {
+        const current = rooms.get(code);
+        if (current && current.users.size === 0) rooms.delete(code);
+      }, EMPTY_ROOM_GRACE_MS);
       return { room, removed: user };
     }
 
-    // Host left → migrate
+    // Host left → migrate to next user (creator can later reclaim on rejoin)
     if (room.hostId === socketId) {
       const newHost = room.users.values().next().value!;
       newHost.isHost = true;

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   createRoom,
   joinRoom,
@@ -8,10 +8,16 @@ import {
   getRoomsCount,
   _clearRooms,
 } from '../src/socket/rooms.js';
+import { EMPTY_ROOM_GRACE_MS } from 'shared/constants';
 
 describe('Room management', () => {
   beforeEach(() => {
     _clearRooms();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('createRoom creates a room with the creator as host', () => {
@@ -61,13 +67,53 @@ describe('Room management', () => {
     expect(getRoomUsers(room)).toHaveLength(1);
   });
 
-  it('leaveRoom deletes room when last user leaves', () => {
+  it('leaveRoom keeps empty room during grace period, then deletes', () => {
     const room = createRoom('socket1', 'Darius');
     expect(getRoomsCount()).toBe(1);
 
     leaveRoom('socket1');
+    // Still present right after leave (grace period)
+    expect(getRoomsCount()).toBe(1);
+    expect(getRoom(room.code)).toBeDefined();
+
+    vi.runAllTimers();
     expect(getRoomsCount()).toBe(0);
     expect(getRoom(room.code)).toBeUndefined();
+  });
+
+  it('creator can rejoin empty room within grace period and reclaim host', () => {
+    const room = createRoom('socket1', 'Darius');
+    leaveRoom('socket1');
+    expect(getRoomsCount()).toBe(1); // still present
+
+    const result = joinRoom(room.code, 'socket1b', 'Darius');
+    expect('room' in result).toBe(true);
+    if ('room' in result) {
+      expect(result.room.hostId).toBe('socket1b');
+      const users = getRoomUsers(result.room);
+      expect(users[0].isHost).toBe(true);
+    }
+
+    // Grace timer should have been cancelled; room stays alive
+    vi.runAllTimers();
+    expect(getRoom(room.code)).toBeDefined();
+  });
+
+  it('creator reclaims host from migrated non-creator host on rejoin', () => {
+    const room = createRoom('socket1', 'Darius');
+    joinRoom(room.code, 'socket2', 'Dasha');
+    leaveRoom('socket1'); // host migrates to Dasha
+    expect(room.hostId).toBe('socket2');
+
+    const result = joinRoom(room.code, 'socket1b', 'Darius');
+    if ('room' in result) {
+      expect(result.room.hostId).toBe('socket1b');
+      const users = getRoomUsers(result.room);
+      const darius = users.find((u) => u.name === 'Darius');
+      const dasha = users.find((u) => u.name === 'Dasha');
+      expect(darius?.isHost).toBe(true);
+      expect(dasha?.isHost).toBe(false);
+    }
   });
 
   it('leaveRoom migrates host when host leaves', () => {

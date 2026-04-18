@@ -15,6 +15,7 @@ export const TIME_SYNC_TRIM = 2; // discard top/bottom N by RTT
 export const MAX_USERS_PER_ROOM = 10;
 export const ROOM_CODE_LENGTH = 6;
 export const ROOM_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+export const EMPTY_ROOM_GRACE_MS = 20 * 1000; // keep empty rooms around for 20s so solo host can refresh
 
 // Chat
 export const MAX_MESSAGE_LENGTH = 500;
