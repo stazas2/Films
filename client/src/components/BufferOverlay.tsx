@@ -15,10 +15,6 @@ export default function BufferOverlay() {
       timeoutId = setTimeout(() => setShowSkip(true), BUFFER_TIMEOUT_MS);
     };
 
-    const onReady = () => {
-      // Could check if ALL are ready, but buffer:all-ready handles that
-    };
-
     const onAllReady = () => {
       setWaitingFor(null);
       setShowSkip(false);
@@ -26,12 +22,10 @@ export default function BufferOverlay() {
     };
 
     socket.on('buffer:waiting', onWaiting);
-    socket.on('buffer:ready', onReady);
     socket.on('buffer:all-ready', onAllReady);
 
     return () => {
       socket.off('buffer:waiting', onWaiting);
-      socket.off('buffer:ready', onReady);
       socket.off('buffer:all-ready', onAllReady);
       clearTimeout(timeoutId);
     };
@@ -40,13 +34,19 @@ export default function BufferOverlay() {
   if (!waitingFor) return null;
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 z-10">
-      <div className="w-10 h-10 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin mb-4" />
-      <p className="text-yellow-400 text-lg">Ожидание {waitingFor}...</p>
+    <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm z-10 animate-fade-in">
+      <div className="relative flex items-center justify-center w-14 h-14 mb-4">
+        <div className="absolute inset-0 rounded-full bg-amber-400/20 animate-ping" />
+        <div className="relative w-10 h-10 border-[3px] border-amber-400/30 border-t-amber-400 rounded-full animate-spin" />
+      </div>
+      <p className="text-ink-50 text-base font-medium">
+        Ждём <span className="text-amber-400">{waitingFor}</span>
+      </p>
+      <p className="text-ink-300 text-xs mt-1">Подгружается видео...</p>
       {showSkip && (
         <button
           onClick={() => setWaitingFor(null)}
-          className="mt-4 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors"
+          className="mt-4 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-ink-100 transition-colors"
         >
           Продолжить без ожидания
         </button>
