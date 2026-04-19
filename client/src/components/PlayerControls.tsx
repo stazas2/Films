@@ -163,13 +163,12 @@ function SeekBar({
       {/* Tooltip */}
       {previewTime != null && trackWidth > 0 && (
         <div
-          className="absolute bottom-full mb-3 px-2 py-1 rounded-md bg-black/90 backdrop-blur-sm border border-white/10 text-ink-50 text-xs font-mono tabular-nums pointer-events-none whitespace-nowrap shadow-card animate-fade-in"
+          className="absolute bottom-full mb-3 px-2 py-1 rounded-md bg-black/95 border border-white/15 text-ink-50 text-xs font-mono tabular-nums pointer-events-none whitespace-nowrap shadow-card z-30"
           style={{ left: `${tooltipLeft}px`, transform: 'translateX(-50%)' }}
         >
           {formatTime(previewTime)}
-          {/* Tail */}
           <span
-            className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-[5px] border-r-[5px] border-t-[5px] border-l-transparent border-r-transparent border-t-black/90"
+            className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-[5px] border-r-[5px] border-t-[5px] border-l-transparent border-r-transparent border-t-black/95"
           />
         </div>
       )}
@@ -256,7 +255,7 @@ export default function PlayerControls({ videoRef, onToggleFullscreen }: Props) 
   };
 
   return (
-    <div className="px-4 pt-6 pb-3 bg-gradient-to-t from-black/95 via-black/70 to-transparent space-y-1">
+    <div className="relative z-20 px-4 pt-6 pb-3 bg-gradient-to-t from-black/95 via-black/70 to-transparent space-y-1">
       {/* Seek bar with hover/scrub tooltip */}
       <SeekBar duration={duration} currentTime={currentTime} onSeek={handleSeek} />
 
