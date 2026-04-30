@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router-dom';
 import Home from './pages/Home';
 import Room from './pages/Room';
+import Bookmarklet from './pages/Bookmarklet';
 
 export default function App() {
   return (
@@ -8,6 +9,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/room/:code" element={<Room />} />
+        <Route path="/bookmarklet" element={<Bookmarklet />} />
       </Routes>
     </div>
   );

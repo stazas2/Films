@@ -7,13 +7,31 @@ export default function Home() {
   const [roomCode, setRoomCode] = useState('');
   const [mode, setMode] = useState<'create' | 'join'>('create');
   const { createRoom, joinRoom } = useRoom();
-  const { rejoinError, setRejoinError } = useRoomStore();
+  const { rejoinError, setRejoinError, pendingVideoUrl, setPendingVideoUrl } = useRoomStore();
 
   useEffect(() => {
     if (!rejoinError) return;
     const t = setTimeout(() => setRejoinError(null), 5000);
     return () => clearTimeout(t);
   }, [rejoinError, setRejoinError]);
+
+  // Pick up ?video=... from the bookmarklet and stash it in the store.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const v = params.get('video');
+    if (!v) return;
+    try {
+      const parsed = new URL(v);
+      if (['http:', 'https:'].includes(parsed.protocol)) {
+        setPendingVideoUrl(v);
+      }
+    } catch {
+      // ignore malformed
+    }
+    params.delete('video');
+    const qs = params.toString();
+    window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''));
+  }, [setPendingVideoUrl]);
 
   const handleCreate = () => {
     if (!name.trim()) return;
@@ -79,6 +97,32 @@ export default function Home() {
             Создай комнату, кинь другу ссылку — и включайте фильм на одной секунде.
           </p>
         </div>
+
+        {/* Pending video pill — set by bookmarklet via ?video=... */}
+        {pendingVideoUrl && (
+          <div className="glass rounded-xl px-4 py-3 flex items-start gap-3 animate-rise-in">
+            <svg className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-ink-50">Ссылка захвачена</p>
+              <p className="text-[11px] text-ink-300 mt-0.5 truncate font-mono" title={pendingVideoUrl}>
+                {pendingVideoUrl}
+              </p>
+              <p className="text-xs text-ink-200 mt-1">Создай комнату — фильм запустится сразу.</p>
+            </div>
+            <button
+              onClick={() => setPendingVideoUrl(null)}
+              className="text-ink-300 hover:text-ink-50 transition-colors flex-shrink-0"
+              aria-label="Отменить"
+              title="Отменить"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
 
         {/* Auth card */}
         <div className="glass rounded-2xl p-6 space-y-5 shadow-card">
@@ -160,6 +204,11 @@ export default function Home() {
         {/* Footer hint */}
         <p className="text-center text-xs text-ink-300">
           HLS-потоки, YouTube скоро · синхронизация &lt; 200мс
+        </p>
+        <p className="text-center text-xs text-ink-400">
+          <a href="/bookmarklet" className="underline decoration-dotted underline-offset-4 hover:text-amber-400 transition-colors">
+            Захватчик ссылок из плеера →
+          </a>
         </p>
       </div>
     </div>

@@ -13,6 +13,7 @@ function formatTime(seconds: number): string {
 interface Props {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   onToggleFullscreen: () => void;
+  onQualityChange?: (level: number) => void;
 }
 
 const ACCENT = '#f5b544';
@@ -199,8 +200,107 @@ function IconButton({
   );
 }
 
-export default function PlayerControls({ videoRef, onToggleFullscreen }: Props) {
-  const { playing, currentTime, duration, volume, muted, buffering } = usePlayerStore();
+function QualityMenu({
+  levels,
+  currentLevel,
+  playingLevel,
+  onChange,
+}: {
+  levels: { height: number; bitrate: number }[];
+  currentLevel: number;
+  playingLevel: number;
+  onChange: (level: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
+
+  // Only show the menu when there's a real choice: at least 2 levels with known heights.
+  // Media playlists (no #EXT-X-STREAM-INF) get a single level with height=0 — useless to surface.
+  const realLevels = levels
+    .map((l, i) => ({ ...l, idx: i }))
+    .filter((l) => l.height > 0);
+  if (realLevels.length < 2) return null;
+
+  // Sort by height descending so 1080p comes first; preserve original index for HLS.
+  const sorted = realLevels.sort((a, b) => b.height - a.height);
+
+  const currentLabel =
+    currentLevel === -1
+      ? playingLevel >= 0 && levels[playingLevel]
+        ? `Авто · ${levels[playingLevel].height || '?'}p`
+        : 'Авто'
+      : levels[currentLevel]
+        ? `${levels[currentLevel].height || '?'}p`
+        : '?';
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-label="Качество"
+        title="Качество"
+        className="flex items-center gap-1 px-2 h-8 rounded-md text-ink-100 hover:text-amber-400 transition-colors text-xs font-mono tabular-nums"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+        <span>{currentLabel}</span>
+      </button>
+
+      {open && (
+        <div className="absolute bottom-full right-0 mb-2 min-w-[140px] rounded-lg bg-black/95 border border-white/10 shadow-card z-30 py-1 animate-fade-in">
+          <button
+            onClick={() => {
+              onChange(-1);
+              setOpen(false);
+            }}
+            className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between transition-colors ${
+              currentLevel === -1 ? 'text-amber-400' : 'text-ink-100 hover:text-amber-400 hover:bg-white/[0.04]'
+            }`}
+          >
+            <span>Авто</span>
+            {currentLevel === -1 && playingLevel >= 0 && levels[playingLevel] && (
+              <span className="text-[10px] text-ink-300 font-mono">
+                {levels[playingLevel].height || '?'}p
+              </span>
+            )}
+          </button>
+          <div className="h-px bg-white/5 my-1" />
+          {sorted.map((l) => (
+            <button
+              key={l.idx}
+              onClick={() => {
+                onChange(l.idx);
+                setOpen(false);
+              }}
+              className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between transition-colors ${
+                currentLevel === l.idx ? 'text-amber-400' : 'text-ink-100 hover:text-amber-400 hover:bg-white/[0.04]'
+              }`}
+            >
+              <span>{l.height ? `${l.height}p` : 'audio'}</span>
+              <span className="text-[10px] text-ink-400 font-mono ml-3">
+                {l.bitrate ? `${Math.round(l.bitrate / 1000)}k` : ''}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function PlayerControls({ videoRef, onToggleFullscreen, onQualityChange }: Props) {
+  const { playing, currentTime, duration, volume, muted, buffering, levels, currentLevel, playingLevel } = usePlayerStore();
 
   const togglePlay = () => {
     const video = videoRef.current;
@@ -314,6 +414,16 @@ export default function PlayerControls({ videoRef, onToggleFullscreen }: Props) 
               accentColor="#ffffff"
             />
           </div>
+
+          {/* Quality (component itself decides whether to render based on real level count) */}
+          {onQualityChange && (
+            <QualityMenu
+              levels={levels}
+              currentLevel={currentLevel}
+              playingLevel={playingLevel}
+              onChange={onQualityChange}
+            />
+          )}
 
           {/* Fullscreen */}
           <IconButton onClick={onToggleFullscreen} label="Полный экран" className="w-8 h-8 ml-1">

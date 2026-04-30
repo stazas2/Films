@@ -81,6 +81,7 @@ export default function Player({ src }: Props) {
     }
 
     store.setError(null);
+    store.resetQuality();
 
     // Proxy the source URL through our server
     const proxiedSrc = `/api/proxy?url=${encodeURIComponent(src)}`;
@@ -95,6 +96,16 @@ export default function Player({ src }: Props) {
 
       hls.loadSource(proxiedSrc);
       hls.attachMedia(video);
+
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        const lvls = hls.levels.map((l) => ({ height: l.height, bitrate: l.bitrate }));
+        store.setLevels(lvls);
+        store.setCurrentLevel(hls.currentLevel ?? -1);
+      });
+
+      hls.on(Hls.Events.LEVEL_SWITCHED, (_e, data) => {
+        store.setPlayingLevel(data.level);
+      });
 
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (data.fatal) {
@@ -118,6 +129,12 @@ export default function Player({ src }: Props) {
       }
     };
   }, [src]);
+
+  const handleQualityChange = useCallback((level: number) => {
+    if (!hlsRef.current) return;
+    hlsRef.current.currentLevel = level;
+    store.setCurrentLevel(level);
+  }, []);
 
   // Bind video events to store
   useEffect(() => {
@@ -381,12 +398,12 @@ export default function Player({ src }: Props) {
         )}
         {isFullscreen && src && (
           <div className={controlsWrapperClass}>
-            <PlayerControls videoRef={videoRef} onToggleFullscreen={toggleFullscreen} />
+            <PlayerControls videoRef={videoRef} onToggleFullscreen={toggleFullscreen} onQualityChange={handleQualityChange} />
           </div>
         )}
       </div>
       {!isFullscreen && src && (
-        <PlayerControls videoRef={videoRef} onToggleFullscreen={toggleFullscreen} />
+        <PlayerControls videoRef={videoRef} onToggleFullscreen={toggleFullscreen} onQualityChange={handleQualityChange} />
       )}
     </div>
   );

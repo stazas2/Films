@@ -90,6 +90,13 @@ export function useRoom() {
         { userName },
         (res: { code: string; users: UserInfo[] }) => {
           store.setRoom(res.code, res.users, true);
+          // If we arrived with ?video=... from the bookmarklet, push it to the room now.
+          const pending = useRoomStore.getState().pendingVideoUrl;
+          if (pending) {
+            useRoomStore.getState().setVideoUrl(pending);
+            socket.emit('room:video', { url: pending });
+            useRoomStore.getState().setPendingVideoUrl(null);
+          }
           navigate(`/room/${res.code}`);
         },
       );

@@ -11,6 +11,7 @@ interface RoomState {
   connected: boolean;
   justCreated: boolean;
   rejoinError: string | null;
+  pendingVideoUrl: string | null;
 
   setRoom: (code: string, users: UserInfo[], justCreated?: boolean) => void;
   setUsers: (users: UserInfo[]) => void;
@@ -18,6 +19,7 @@ interface RoomState {
   setVideoUrl: (url: string | null) => void;
   setConnected: (connected: boolean) => void;
   setRejoinError: (msg: string | null) => void;
+  setPendingVideoUrl: (url: string | null) => void;
   clearJustCreated: () => void;
   reset: () => void;
 }
@@ -33,6 +35,7 @@ export const useRoomStore = create<RoomState>()(
       connected: false,
       justCreated: false,
       rejoinError: null,
+      pendingVideoUrl: null,
 
       setRoom: (code, users, justCreated = false) => {
         const me = users.find((u) => u.isHost) || users[0];
@@ -52,6 +55,8 @@ export const useRoomStore = create<RoomState>()(
       setConnected: (connected) => set({ connected }),
 
       setRejoinError: (msg) => set({ rejoinError: msg }),
+
+      setPendingVideoUrl: (url) => set({ pendingVideoUrl: url }),
 
       clearJustCreated: () => set({ justCreated: false }),
 
